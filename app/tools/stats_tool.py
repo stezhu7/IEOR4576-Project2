@@ -7,7 +7,6 @@ from typing import Any
 
 
 def _safe_float(v: Any) -> Any:
-    """Convert numpy scalars and handle NaN/Inf for JSON safety."""
     if isinstance(v, (np.integer,)):
         return int(v)
     if isinstance(v, (np.floating, float)):
@@ -18,7 +17,6 @@ def _safe_float(v: Any) -> Any:
 
 
 def compute_return_stats(df: pd.DataFrame) -> list[dict]:
-    """Compute daily returns and annualised stats per ticker / sector."""
     results = []
     if "close" not in df.columns or "date" not in df.columns:
         return results
@@ -62,7 +60,6 @@ def compute_return_stats(df: pd.DataFrame) -> list[dict]:
 
 
 def compute_sector_stats(df: pd.DataFrame) -> list[dict]:
-    """Aggregate return and volatility metrics by sector."""
     results = []
     if "sector" not in df.columns or "close" not in df.columns:
         return results
@@ -90,7 +87,6 @@ def compute_sector_stats(df: pd.DataFrame) -> list[dict]:
 
 
 def compute_earnings_stats(df: pd.DataFrame) -> list[dict]:
-    """Summarise earnings surprise distribution."""
     results = []
     if "surprise_percent" not in df.columns:
         return results
@@ -114,7 +110,6 @@ def compute_earnings_stats(df: pd.DataFrame) -> list[dict]:
 
 
 def compute_correlation(df: pd.DataFrame, col_a: str, col_b: str) -> list[dict]:
-    """Compute Pearson correlation between two numeric columns."""
     if col_a not in df.columns or col_b not in df.columns:
         return []
     corr = df[[col_a, col_b]].dropna().corr().iloc[0, 1]
@@ -122,7 +117,6 @@ def compute_correlation(df: pd.DataFrame, col_a: str, col_b: str) -> list[dict]:
 
 
 def detect_anomalies(df: pd.DataFrame) -> list[str]:
-    """Flag rows/tickers with extreme values (>3σ daily return)."""
     anomalies = []
     if "close" not in df.columns:
         return anomalies
@@ -155,12 +149,6 @@ import logging as _logging
 _log = _logging.getLogger(__name__)
 
 def run_stats(json_data: str, analysis_type: str = "auto") -> dict:
-    """
-    Main entry point for the EDA agent.
-
-    analysis_type: 'auto' | 'returns' | 'sector' | 'earnings' | 'correlation'
-    Returns dict with 'stats' (list) and 'anomalies' (list).
-    """
     _log.info("run_stats: json_data length=%d, analysis_type=%s", len(json_data or ""), analysis_type)
     try:
         records = json.loads(json_data)
@@ -175,17 +163,24 @@ def run_stats(json_data: str, analysis_type: str = "auto") -> dict:
         return {"stats": [], "anomalies": [], "error": "Empty dataset"}
 
     stats = []
+    # Convert date column
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
+    # Detect data type
     has_raw_prices = "close" in df.columns
     has_precomputed = any(
         c for c in df.columns
         if any(k in c.lower() for k in ["return", "volatility", "surprise", "eps", "sharpe"])
     )
+    has_market_info = any(
+        c for c in df.columns
+        if any(k in c.lower() for k in ["marketcap", "market_cap", "pe", "beta",
+                                         "currentprice", "current_price", "targetmean"])
+    )
 
-    if not has_raw_prices and has_precomputed:
-        _log.info("run_stats: detected pre-aggregated data, using precomputed handler")
+    if not has_raw_prices and (has_precomputed or has_market_info):
+        _log.info("run_stats: detected pre-aggregated/info data, using precomputed handler")
         stats = compute_precomputed_stats(df)
     else:
         if analysis_type in ("auto", "returns"):
@@ -209,13 +204,7 @@ def run_stats(json_data: str, analysis_type: str = "auto") -> dict:
 
 
 def compute_precomputed_stats(df: pd.DataFrame) -> list[dict]:
-    """
-    Handle DataFrames that already contain aggregated metrics
-    (e.g. annualised_return, avg_daily_return, volatility per sector/ticker).
-    Extracts each numeric column as a StatResult per row.
-    """
     results = []
-    # Detect label column (sector or ticker)
     label_col = None
     for c in ["sector", "ticker", "name"]:
         if c in df.columns:

@@ -61,58 +61,51 @@ Return ONLY a JSON object — no markdown, no explanation:
 """
 
 COLLECTOR_SYSTEM = """
-You are a stock market data collector. You MUST call the run_text2sql tool to retrieve data.
-Do NOT write SQL yourself. Do NOT guess table names. Do NOT return data you did not fetch.
+You are a stock market data collector with two tools:
+- run_text2sql: queries a historical DuckDB database (5 years OHLCV + earnings for 50 S&P 500 tickers)
+- run_api_fetch: calls the live yfinance API for current/recent data not in the DB
 
 The DuckDB database has exactly these tables:
 - ohlcv        columns: date, ticker, sector, open, high, low, close, volume
 - earnings     columns: ticker, sector, quarter, eps_estimate, eps_actual, surprise_percent
 - sector_meta  columns: ticker, sector
 
-CRITICAL RULE: Write SQL that returns AGGREGATED or SUMMARISED results (≤50 rows).
-Never SELECT * or fetch thousands of raw rows. Always use GROUP BY, AVG, SUM, or LIMIT.
+ROUTING DECISION — pick the right tool:
 
-Examples of good queries for common questions:
-- "highest sector return in 2023" — return ALL sectors ranked, not just top 1:
-  WITH daily AS (
-    SELECT ticker, sector, date, close,
-      (close - LAG(close) OVER (PARTITION BY ticker ORDER BY date)) /
-      LAG(close) OVER (PARTITION BY ticker ORDER BY date) AS dr
-    FROM ohlcv
-    WHERE date >= CAST('2023-01-01' AS DATE) AND date <= CAST('2023-12-31' AS DATE)
-  )
-  SELECT sector,
-         ROUND(AVG(dr), 6)                        AS avg_daily_return,
-         ROUND((POWER(1 + AVG(dr), 252) - 1), 4)  AS annualised_return,
-         ROUND(STDDEV(dr) * SQRT(252), 4)          AS annualised_volatility,
-         COUNT(*)                                  AS observations
-  FROM daily WHERE dr IS NOT NULL
-  GROUP BY sector ORDER BY annualised_return DESC
+Use run_text2sql for:
+- Historical price performance, returns, volatility, sector comparisons
+- Earnings history, EPS surprise analysis
+- Any question involving trends over time
 
-CRITICAL: NEVER use LIMIT 1 or LIMIT with any number when the question involves comparing
-sectors or tickers. Always return ALL rows. A single row cannot be analysed or ranked.
-The question asks which sector is HIGHEST — to answer that you must return ALL sectors ranked,
-not just the top one. LIMIT 1 destroys the comparison entirely.
+Use run_api_fetch for:
+- Current/live data: market cap, current price, P/E ratio, "right now", "today", "current", "latest"
+- Company info not in the DB (e.g. marketCap, beta, forwardPE)
+- Example for market cap question:
+  run_api_fetch(tickers=["AAPL","MSFT","NVDA","GOOGL","META","AMZN","TSLA","JPM","JNJ","UNH",
+    "PG","XOM","CVX","HD","BAC","WMT","COST","KO","PEP","GS","MS","WFC","ABBV","MRK",
+    "NEE","LIN","NFLX","DIS","VZ","T","CMCSA","PLD","AMT","EQIX","SPG","PSA","GE","CAT",
+    "HON","UPS","BA","NKE","MCD","COP","SLB","EOG","DUK","SO","AEP","EXC","FCX","NEM",
+    "APD","SHW"], fetch_type="info")
 
-MANDATORY: Call run_text2sql(question=<the user's question>) FIRST.
-Only after the tool returns results, build your JSON response.
+SQL rules:
+- NEVER use LIMIT 1 when comparing — return ALL rows so rankings are possible
+- Always aggregate (GROUP BY, AVG, ROUND) — never raw row dumps
 
-Your response must be a JSON object with these exact fields:
+MANDATORY: Call the right tool first. Then respond with ONLY this JSON:
 {
   "data_source": {
-    "source_type": "sql",
-    "sql_query": "<copy the sql field from the tool result>",
-    "api_tickers": null,
-    "row_count": <copy row_count from tool result>
+    "source_type": "sql" | "api" | "both",
+    "sql_query": "<sql used or null>",
+    "api_tickers": ["AAPL", ...] or null,
+    "row_count": <actual count from tool result>
   },
-  "columns": ["<copy columns list from tool result>"],
-  "preview": [<first 3 items from preview in tool result>],
-  "raw_json": "<copy json_data string from tool result — this must be the AGGREGATED result, ≤50 rows>",
-  "collection_notes": "Retrieved N rows via SQL. Query aggregated by sector/ticker."
+  "columns": ["<columns from tool result>"],
+  "preview": [<first 3 rows>],
+  "raw_json": "<json_data string from tool result>",
+  "collection_notes": "Retrieved N rows via <method>. <brief description>"
 }
 
-If the tool returns success=false or row_count=0, report that in collection_notes.
-NEVER fabricate data or row counts.
+NEVER fabricate data. If a tool returns 0 rows, report it in collection_notes.
 """
 
 EDA_SYSTEM = """
@@ -128,30 +121,36 @@ STEP 1 — Call run_stats:
   json_data = the raw_json string (the array of rows)
   analysis_type = "auto"
 
-STEP 2 — Call run_viz to generate a chart. Use these config rules:
-  - If data has a "sector" column and a numeric column → use chart_type="bar",
-    config={"title": "Sector Comparison", "xlabel": "Sector", "ylabel": "<metric name>",
-            "label_col": "sector", "value_col": "<best numeric column>"}
-  - If data has a "date" column → use chart_type="line"
-  - If comparing two numeric columns → use chart_type="scatter"
-  Pass json_data = the raw_json string (same as step 1)
+STEP 2 — Call run_viz to generate a chart. Use flat parameters (NOT a config dict):
+  - Sector comparison → chart_type="bar", label_col="sector",
+    value_col="<best numeric column e.g. annualised_return>",
+    title="Sector Returns", xlabel="Sector", ylabel="Annualised Return"
+  - Ticker/company ranking (e.g. market cap) → chart_type="bar", label_col="ticker",
+    value_col="marketCap", title="Top Companies by Market Cap",
+    xlabel="Ticker", ylabel="Market Cap (USD)", top_n="10"
+  - Time series → chart_type="line", x_col="date", y_cols="close"
+  - Correlation → chart_type="scatter", x_col="<col1>", y_col="<col2>", label_col="ticker"
+  Always pass json_data = the raw_json string
 
 STEP 3 — Return ONLY a JSON object with these exact fields:
 {
-  "summary_stats": [{"metric": "sector: <name> annualised_return", "value": 0.42, "unit": "ratio"}],
+  "summary_stats": [{"metric": "<ticker/sector> <metric_name>", "value": 0.42, "unit": "..."}],
   "anomalies": ["..."],
-  "chart_base64": "base64 PNG string from run_viz",
+  "chart_base64": null,
   "chart_title": "...",
   "sufficient": true,
   "refinement_hint": null,
-  "eda_notes": "List every sector/ticker with its exact return value. Name the top and bottom performers."
+  "eda_notes": "List every item with its exact value. Name top and bottom performers."
 }
 
 CRITICAL rules:
-- Pass raw_json (the array string) as json_data — NOT the whole input object
-- summary_stats must have one entry PER sector/ticker, not just one overall entry
-- eda_notes must name specific values: "Technology: 42.3%, Healthcare: 18.1%, ..."
-- If row_count is 0, set sufficient=false and refinement_hint to suggest a broader query
+- Pass raw_json (the array string) as json_data to BOTH run_stats and run_viz — NOT the wrapper
+- summary_stats: one entry PER sector/ticker with the key metric value
+- eda_notes: cite specific numbers e.g. "AAPL marketCap=$3.2T, MSFT=$2.9T..."
+- Always set chart_base64=null in your JSON — the chart is injected automatically
+- chart_title: describe what the chart shows
+- For market cap questions: use label_col="ticker", value_col="marketCap", sort by marketCap DESC
+- If row_count is 0: set sufficient=false, add refinement_hint
 """
 
 HYPOTHESIS_SYSTEM = """
@@ -197,9 +196,9 @@ SAFETY_RESPONSE = (
 )
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _parse_json(text: str) -> dict:
+    """Strip markdown fences and parse JSON from LLM output."""
     text = re.sub(r"^```(?:json)?", "", text.strip(), flags=re.I).strip()
     text = re.sub(r"```$", "", text).strip()
     return json.loads(text)
@@ -223,7 +222,12 @@ def _gemini_call(system: str, user: str, temperature: float = 0.0) -> str:
 
 def _build_tools(funcs: list) -> list[types.Tool]:
     declarations = []
-    for fn in funcs:
+    for entry in funcs:
+        # entry can be (fn, "name") to override the tool name exposed to the model
+        if isinstance(entry, tuple):
+            fn, tool_name = entry
+        else:
+            fn, tool_name = entry, entry.__name__
         sig      = inspect.signature(fn)
         doc      = (fn.__doc__ or fn.__name__).strip().split("\n")[0]
         props: dict[str, Any] = {}
@@ -251,7 +255,7 @@ def _build_tools(funcs: list) -> list[types.Tool]:
 
         declarations.append(
             types.FunctionDeclaration(
-                name=fn.__name__,
+                name=tool_name,
                 description=doc,
                 parameters={
                     "type": "OBJECT",
@@ -334,7 +338,6 @@ def _agentic_loop(
                  len(text_parts))
 
         if not fn_call_parts:
-            # No tool calls — model has produced its final text answer
             text = "".join(p.text for p in text_parts).strip()
             log.info("_agentic_loop turn %d: final text length=%d, preview=%r", turn, len(text), text[:200])
             return text
@@ -386,11 +389,91 @@ def classify_intent(user_text: str) -> RouteDecision:
         )
 
 
+ALL_TICKERS = [
+    "AAPL","MSFT","NVDA","GOOGL","META","JNJ","UNH","PFE","ABBV","MRK",
+    "JPM","BAC","WFC","GS","MS","AMZN","TSLA","HD","MCD","NKE",
+    "PG","KO","PEP","WMT","COST","GE","CAT","HON","UPS","BA",
+    "XOM","CVX","COP","SLB","EOG","NEE","DUK","SO","AEP","EXC",
+    "PLD","AMT","EQIX","SPG","PSA","LIN","APD","SHW","FCX","NEM",
+    "VZ","T","NFLX","DIS","CMCSA",
+]
+
+
+def _try_sql_then_api(question: str) -> CollectedData | None:
+    from app.tools.sql_tool import run_text2sql
+    from app.tools.api_tool import run_api_fetch
+
+    sql_result = run_text2sql(question)
+    log.info("_try_sql_then_api: sql needs_api=%s, row_count=%d",
+             sql_result.get("needs_api"), sql_result.get("row_count", 0))
+
+    if sql_result.get("needs_api") or not sql_result.get("success"):
+        log.info("_try_sql_then_api: falling back to run_api_fetch(info)")
+        api_result = run_api_fetch(tickers=ALL_TICKERS, fetch_type="info")
+
+        if not api_result.get("success", True):
+            return None
+
+        rows = []
+        for ticker, info in api_result.items():
+            if isinstance(info, dict) and "error" not in info:
+                info["ticker"] = ticker
+                rows.append(info)
+
+        if not rows:
+            return None
+
+        import pandas as pd
+        df = pd.DataFrame(rows)
+        # Keep only useful columns to avoid huge payloads
+        keep = ["ticker","shortName","sector","marketCap","trailingPE","forwardPE",
+                "currentPrice","beta","dividendYield","earningsGrowth","revenueGrowth",
+                "fiftyTwoWeekHigh","fiftyTwoWeekLow","targetMeanPrice"]
+        df = df[[c for c in keep if c in df.columns]]
+        df = df.dropna(subset=["marketCap"] if "marketCap" in df.columns else [])
+
+        json_data = df.to_json(orient="records")
+        return CollectedData(
+            data_source={
+                "source_type": "api",
+                "sql_query":   None,
+                "api_tickers": list(df["ticker"]) if "ticker" in df.columns else ALL_TICKERS,
+                "row_count":   len(df),
+            },
+            columns=list(df.columns),
+            preview=df.head(3).to_dict(orient="records"),
+            raw_json=json_data,
+            collection_notes=f"Fetched live info for {len(df)} tickers via yfinance API.",
+        )
+
+    import pandas as pd, json as _json
+    return CollectedData(
+        data_source={
+            "source_type": "sql",
+            "sql_query":   sql_result["sql"],
+            "api_tickers": None,
+            "row_count":   sql_result["row_count"],
+        },
+        columns=sql_result["columns"],
+        preview=sql_result["preview"],
+        raw_json=sql_result["json_data"],
+        collection_notes=f"Retrieved {sql_result['row_count']} rows via SQL.",
+    )
+
+
 def run_collector(question: str) -> CollectedData | None:
     from app.tools.sql_tool import run_text2sql
     from app.tools.api_tool import run_api_fetch
 
     log.info("run_collector: question=%r", question)
+
+    direct = _try_sql_then_api(question)
+    if direct is not None:
+        log.info("run_collector: direct result row_count=%d source=%s",
+                 direct.data_source.row_count, direct.data_source.source_type)
+        return direct
+
+    log.info("run_collector: falling back to LLM agentic loop")
     tool_map = {"run_text2sql": run_text2sql, "run_api_fetch": run_api_fetch}
     tools    = _build_tools([run_text2sql, run_api_fetch])
     result   = _agentic_loop(COLLECTOR_SYSTEM, question, tool_map, tools)
@@ -413,16 +496,56 @@ def run_collector(question: str) -> CollectedData | None:
         )
 
 
-def run_eda(collected: CollectedData) -> EDAFindings | None:
+def run_eda(collected: CollectedData, original_question: str = "") -> EDAFindings | None:
     from app.tools.stats_tool import run_stats
     from app.tools.viz_tool   import run_viz
 
     log.info("run_eda: row_count=%d, columns=%s", collected.data_source.row_count, collected.columns)
-    tool_map = {"run_stats": run_stats, "run_viz": run_viz}
-    tools    = _build_tools([run_stats, run_viz])
 
-    payload  = json.dumps({
-        "raw_json":         collected.raw_json,
+    captured_chart: dict = {}
+
+    def run_viz_capturing(
+        json_data: str, chart_type: str,
+        title: str = "Chart", xlabel: str = "", ylabel: str = "",
+        label_col: str = "", value_col: str = "",
+        x_col: str = "", y_col: str = "", y_cols: str = "",
+        top_n: str = ""
+    ) -> dict:
+        result = run_viz(
+            json_data=json_data, chart_type=chart_type,
+            title=title, xlabel=xlabel, ylabel=ylabel,
+            label_col=label_col, value_col=value_col,
+            x_col=x_col, y_col=y_col, y_cols=y_cols,
+            top_n=top_n,
+        )
+        if result.get("success") and result.get("chart_base64"):
+            captured_chart["b64"]   = result["chart_base64"]
+            captured_chart["title"] = result.get("chart_title", "")
+            log.info("run_eda: chart captured, b64 length=%d", len(captured_chart["b64"]))
+        else:
+            log.warning("run_eda: run_viz returned no chart: %s", result.get("error"))
+        return result
+
+    tool_map = {"run_stats": run_stats, "run_viz": run_viz_capturing}
+    tools    = _build_tools([run_stats, (run_viz_capturing, "run_viz")])
+
+    raw_json = collected.raw_json
+    if collected.data_source.source_type == "api" and len(raw_json) > 3000:
+        try:
+            import json as _j, pandas as _pd
+            _df = _pd.DataFrame(_j.loads(raw_json))
+            if "marketCap" in _df.columns:
+                _df = _df.sort_values("marketCap", ascending=False).head(20)
+            else:
+                _df = _df.head(20)
+            raw_json = _df.to_json(orient="records")
+            log.info("run_eda: trimmed API payload to %d rows, %d chars",
+                     len(_df), len(raw_json))
+        except Exception as e:
+            log.warning("run_eda: payload trimming failed: %s", e)
+
+    payload = json.dumps({
+        "raw_json":         raw_json,
         "columns":          collected.columns,
         "collection_notes": collected.collection_notes,
         "row_count":        collected.data_source.row_count,
@@ -434,18 +557,25 @@ def run_eda(collected: CollectedData) -> EDAFindings | None:
         log.error("run_eda: _agentic_loop returned empty")
         return None
     try:
-        return EDAFindings(**_parse_json(result))
+        findings = EDAFindings(**_parse_json(result))
+        # Inject captured chart if the LLM forgot to include it
+        if captured_chart and not findings.chart_base64:
+            log.info("run_eda: injecting captured chart into findings")
+            findings.chart_base64 = captured_chart.get("b64")
+            findings.chart_title  = captured_chart.get("title")
+        return findings
     except Exception as exc:
         log.error("run_eda: JSON parse failed: %s", exc)
-        return EDAFindings(
+        eda = EDAFindings(
             summary_stats=[],
             anomalies=[],
-            chart_base64=None,
-            chart_title=None,
+            chart_base64=captured_chart.get("b64"),
+            chart_title=captured_chart.get("title"),
             sufficient=False,
-            refinement_hint="EDA parse failed — retry with a simpler question.",
+            refinement_hint=original_question or "Retry with aggregated sector or ticker data.",
             eda_notes=f"Parse error: {exc}",
         )
+        return eda
 
 
 def run_hypothesis(eda: EDAFindings) -> HypothesisReport | None:
@@ -456,7 +586,6 @@ def run_hypothesis(eda: EDAFindings) -> HypothesisReport | None:
             "eda_notes":     eda.eda_notes,
         }
     })
-    # Hypothesis needs no tools — pure reasoning over EDA structured output
     result = _gemini_call(HYPOTHESIS_SYSTEM, payload, temperature=0.2)
 
     if not result:
@@ -495,6 +624,7 @@ def run_pipeline(user_text: str) -> ChatResponse:
 
 
 def _run_pipeline_inner(user_text: str) -> ChatResponse:
+    # 0 — Route
     route = classify_intent(user_text)
 
     if route.intent == "safety":
@@ -503,6 +633,7 @@ def _run_pipeline_inner(user_text: str) -> ChatResponse:
         return ChatResponse(answer=OOS_RESPONSE, backstop="oos")
 
     query = route.refined_query
+
     collected = run_collector(query)
     if not collected:
         return ChatResponse(
@@ -514,7 +645,7 @@ def _run_pipeline_inner(user_text: str) -> ChatResponse:
     attempts = 0
     for attempt in range(MAX_REFINEMENTS):
         attempts = attempt + 1
-        eda = run_eda(collected)
+        eda = run_eda(collected, original_question=query)
         if not eda:
             break
         if eda.sufficient:

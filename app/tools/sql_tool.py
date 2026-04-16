@@ -1,7 +1,3 @@
-"""
-tools/sql_tool.py — Text2SQL + DuckDB executor
-"""
-
 from __future__ import annotations
 import json
 import logging
@@ -15,6 +11,7 @@ from google import genai
 from google.genai import types
 
 log = logging.getLogger(__name__)
+
 DB_PATH = str(Path(__file__).resolve().parents[2] / "data" / "market.duckdb")
 log.info("sql_tool: DB_PATH resolved to %s", DB_PATH)
 
@@ -23,6 +20,22 @@ LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
 
 _client = genai.Client(vertexai=True, project=PROJECT, location=LOCATION)
 MODEL   = "gemini-2.5-flash"
+
+# Columns that exist in the DB
+DB_COLUMNS = {
+    "ohlcv":       {"date", "ticker", "sector", "open", "high", "low", "close", "volume"},
+    "earnings":    {"ticker", "sector", "quarter", "eps_estimate", "eps_actual", "surprise_percent"},
+    "sector_meta": {"ticker", "sector"},
+}
+ALL_DB_COLUMNS = {c for cols in DB_COLUMNS.values() for c in cols}
+
+# Columns that only exist in the live API (yfinance info)
+API_ONLY_FIELDS = {
+    "marketcap", "market_cap", "trailingpe", "forwardpe", "pe", "pricetosales",
+    "currentprice", "current_price", "targetmeanprice", "targetprice",
+    "dividendyield", "dividend_yield", "beta", "earningsgrowth", "revenuegrowth",
+    "shortname", "longname", "industry", "fullTimeEmployees",
+}
 
 SCHEMA_CONTEXT = """
 DuckDB database: market.duckdb
@@ -51,28 +64,40 @@ Tables:
    - ticker  VARCHAR PRIMARY KEY
    - sector  VARCHAR
 
-Sectors present: Technology, Healthcare, Financials, Consumer Discretionary,
+This database contains ONLY price/volume/earnings data.
+It does NOT contain: market cap, P/E ratio, current price, beta,
+dividend yield, revenue growth, or any other fundamental/live data.
+
+Sectors: Technology, Healthcare, Financials, Consumer Discretionary,
 Consumer Staples, Industrials, Energy, Utilities, Real Estate, Materials,
 Communication Services
 
-Example useful calculations:
-- Daily return: (close - LAG(close) OVER (PARTITION BY ticker ORDER BY date)) / LAG(close) OVER ...
-- Annualised volatility: STDDEV(daily_return) * SQRT(252)
-- Sector avg return: AVG over tickers in that sector
+Tickers covered: AAPL MSFT NVDA GOOGL META JNJ UNH PFE ABBV MRK
+JPM BAC WFC GS MS AMZN TSLA HD MCD NKE PG KO PEP WMT COST
+GE CAT HON UPS BA XOM CVX COP SLB EOG NEE DUK SO AEP EXC
+PLD AMT EQIX SPG PSA LIN APD SHW FCX NEM VZ T NFLX DIS CMCSA
 """
 
 TEXT2SQL_SYSTEM = f"""
-You are a DuckDB SQL expert. Given a natural-language analytics question about
-US stock market data, write a single valid DuckDB SQL query.
+You are a DuckDB SQL expert for a US stock market database.
 
-Rules:
-- Return ONLY the raw SQL, no markdown fences, no explanation.
-- Use only tables and columns defined in the schema below.
-- Always LIMIT results to at most 500 rows unless the question explicitly needs more.
-- Prefer CTEs for readability.
-- For volatility use: STDDEV(daily_return) * SQRT(252) pattern.
-- For returns use LAG window functions.
-- Cast dates with CAST('2023-01-01' AS DATE) syntax.
+IMPORTANT ROUTING RULE:
+If the question asks for data that is NOT in the database — such as:
+  market capitalisation, market cap, current stock price, P/E ratio,
+  price-to-earnings, forward PE, beta, dividend yield, revenue growth,
+  earnings growth, analyst target price, "right now", "current value",
+  or any other live/fundamental metric —
+then respond with ONLY this single word (no SQL, no explanation):
+  NEEDS_API
+
+Otherwise, write a single valid DuckDB SQL query following these rules:
+- Return ONLY the raw SQL, no markdown fences, no explanation
+- Use only the tables and columns defined in the schema
+- Always aggregate results (GROUP BY, AVG, ROUND) — never raw row dumps
+- NEVER use LIMIT 1 for comparison questions — return ALL rows
+- For returns: use LAG window function over close prices
+- For volatility: STDDEV(daily_return) * SQRT(252)
+- Cast dates: CAST('2023-01-01' AS DATE)
 
 {SCHEMA_CONTEXT}
 """
@@ -86,18 +111,28 @@ def generate_sql(question: str) -> str:
             system_instruction=TEXT2SQL_SYSTEM,
             temperature=0.0,
             max_output_tokens=1024,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     sql = (response.text or "").strip()
     sql = re.sub(r"^```(?:sql)?", "", sql, flags=re.I).strip()
     sql = re.sub(r"```$", "", sql).strip()
-    log.info("generate_sql: produced SQL:\n%s", sql)
+    log.info("generate_sql: produced:\n%s", sql)
     return sql
 
 
+def _references_api_only_fields(sql: str) -> bool:
+    sql_lower = sql.lower()
+    for field in API_ONLY_FIELDS:
+        if field in sql_lower:
+            log.warning("_references_api_only_fields: found API-only field '%s' in SQL", field)
+            return True
+    return False
+
+
 def execute_sql(sql: str) -> tuple[pd.DataFrame, str]:
-    import re as _re
-    cleaned = _re.sub(r'LIMIT\s+1\s*;?', '', sql, flags=_re.IGNORECASE).strip()
+    # Strip LIMIT 1
+    cleaned = re.sub(r"\bLIMIT\s+1\b\s*;?", "", sql, flags=re.IGNORECASE).strip()
     if cleaned != sql:
         log.warning("execute_sql: removed LIMIT 1 from SQL")
         sql = cleaned
@@ -120,6 +155,21 @@ def execute_sql(sql: str) -> tuple[pd.DataFrame, str]:
 
 def run_text2sql(question: str) -> dict:
     sql = generate_sql(question)
+
+    # Check if model signalled that live API data is needed
+    if sql.strip().upper() == "NEEDS_API" or _references_api_only_fields(sql):
+        log.info("run_text2sql: routing to API — question needs live data")
+        return {
+            "success":   False,
+            "needs_api": True,
+            "sql":       "",
+            "error":     "This question requires live data not in the database (e.g. market cap, current price, P/E). Use run_api_fetch instead.",
+            "row_count": 0,
+            "columns":   [],
+            "preview":   [],
+            "json_data": "[]",
+        }
+
     df, err = execute_sql(sql)
 
     if err:
@@ -130,12 +180,27 @@ def run_text2sql(question: str) -> dict:
             f"Rewrite the SQL to fix the error. Return ONLY the corrected SQL."
         )
         sql = generate_sql(retry_prompt)
+
+        # If retry also signals NEEDS_API
+        if sql.strip().upper() == "NEEDS_API":
+            return {
+                "success":   False,
+                "needs_api": True,
+                "sql":       "",
+                "error":     "This question requires live data not in the database.",
+                "row_count": 0,
+                "columns":   [],
+                "preview":   [],
+                "json_data": "[]",
+            }
+
         df, err = execute_sql(sql)
 
     if err or df.empty:
         log.error("run_text2sql: final result empty or error: %s", err)
         return {
             "success":   False,
+            "needs_api": False,
             "sql":       sql,
             "error":     err or "Query returned no rows.",
             "row_count": 0,
@@ -144,14 +209,15 @@ def run_text2sql(question: str) -> dict:
             "json_data": "[]",
         }
 
+    # Hard cap: 100 rows max
     if len(df) > 100:
         log.warning("run_text2sql: truncating %d rows to 100", len(df))
         df = df.head(100)
 
     json_data = df.to_json(orient="records", date_format="iso")
 
+    # 50KB size cap
     if len(json_data) > 50_000:
-        log.warning("run_text2sql: json_data too large (%d chars), truncating", len(json_data))
         for n in [50, 20, 10]:
             json_data = df.head(n).to_json(orient="records", date_format="iso")
             if len(json_data) <= 50_000:
@@ -160,6 +226,7 @@ def run_text2sql(question: str) -> dict:
 
     result = {
         "success":   True,
+        "needs_api": False,
         "sql":       sql,
         "error":     "",
         "row_count": len(df),

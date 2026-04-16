@@ -1,3 +1,10 @@
+"""
+tools/viz_tool.py — Chart generator for the EDA / Hypothesis agents.
+
+Generates matplotlib charts, saves to disk as artifacts, and
+returns base64-encoded PNG for the frontend to render inline.
+"""
+
 from __future__ import annotations
 import base64
 import io
@@ -130,15 +137,32 @@ def scatter_chart(df: pd.DataFrame, x_col: str, y_col: str,
     return b64, path
 
 
-def run_viz(json_data: str, chart_type: str, config: dict) -> dict:
+def run_viz(json_data: str, chart_type: str,
+            title: str = "Chart", xlabel: str = "", ylabel: str = "",
+            label_col: str = "", value_col: str = "",
+            x_col: str = "", y_col: str = "", y_cols: str = "",
+            top_n: str = "") -> dict:
     """
-    Unified entry point for the EDA / Hypothesis agents.
-
-    chart_type: 'bar' | 'line' | 'scatter'
-    config: keys depend on chart type (see docstrings above)
-
+    Generate a chart from json_data and return base64 PNG.
+    chart_type: bar | line | scatter
+    For bar: set label_col and value_col.
+    For line: set x_col and y_cols (comma-separated column names).
+    For scatter: set x_col and y_col.
+    top_n: optional, show only top N rows sorted by value_col descending.
     Returns: {success, chart_base64, chart_title, artifact_path}
     """
+    # Build config dict from flat params for backwards compat
+    config = {
+        "title":     title,
+        "xlabel":    xlabel,
+        "ylabel":    ylabel,
+        "label_col": label_col or None,
+        "value_col": value_col or None,
+        "x_col":     x_col or None,
+        "y_col":     y_col or None,
+        "y_cols":    [c.strip() for c in y_cols.split(",")] if y_cols else None,
+        "top_n":     int(top_n) if top_n else None,
+    }
     try:
         records = json.loads(json_data)
         df = pd.DataFrame(records)
@@ -147,14 +171,25 @@ def run_viz(json_data: str, chart_type: str, config: dict) -> dict:
         ylabel  = config.get("ylabel", "")
 
         if chart_type == "bar":
-            label_col = config.get("label_col")
-            value_col = config.get("value_col")
-            if label_col and value_col and label_col in df.columns and value_col in df.columns:
-                data = dict(zip(df[label_col].astype(str), df[value_col]))
-            else:
-                # Fallback: use first two columns
+            lc    = config.get("label_col")
+            vc    = config.get("value_col")
+            top_n = config.get("top_n")
+            # Auto-detect label/value columns if not specified
+            if not lc or not vc:
                 cols = df.columns.tolist()
-                data = dict(zip(df[cols[0]].astype(str), df[cols[1]]))
+                str_cols = df.select_dtypes(include="object").columns.tolist()
+                num_cols = df.select_dtypes(include="number").columns.tolist()
+                lc = lc or (str_cols[0] if str_cols else cols[0])
+                vc = vc or (num_cols[0] if num_cols else cols[1])
+            if lc in df.columns and vc in df.columns:
+                df_sorted = df.sort_values(vc, ascending=False)
+                if top_n:
+                    df_sorted = df_sorted.head(int(top_n))
+                data = dict(zip(df_sorted[lc].astype(str), df_sorted[vc]))
+            else:
+                cols = df.columns.tolist()
+                df_sorted = df.sort_values(cols[1], ascending=False) if len(cols) > 1 else df
+                data = dict(zip(df_sorted[cols[0]].astype(str), df_sorted[cols[1]]))
             b64, path = bar_chart(data, title, xlabel, ylabel)
 
         elif chart_type == "line":
