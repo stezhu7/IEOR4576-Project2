@@ -1,14 +1,3 @@
-"""
-agents/eda.py — EDA Agent (Step 2: Explore and Analyse)
-
-Responsibilities:
-- Receive CollectedData from the Collector
-- Run statistical aggregations via stats_tool
-- Generate a chart via viz_tool
-- Decide if findings are sufficient or a refinement loop is needed
-- Return EDAFindings structured output
-"""
-
 from __future__ import annotations
 import os
 from google.adk.agents import LlmAgent

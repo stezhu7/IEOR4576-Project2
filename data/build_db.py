@@ -18,7 +18,6 @@ import yfinance as yf
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "market.duckdb")
 
-# 50 tickers covering all 11 GICS sectors
 TICKERS = {
     "Technology":             ["AAPL", "MSFT", "NVDA", "GOOGL", "META"],
     "Healthcare":             ["JNJ", "UNH", "PFE", "ABBV", "MRK"],
@@ -48,17 +47,14 @@ def build_ohlcv(con: duckdb.DuckDBPyConnection) -> None:
                 print(f"  SKIP {ticker}: no data")
                 continue
             df = df.reset_index()
-            # yfinance v0.2+ returns MultiIndex columns when downloading single ticker
             if isinstance(df.columns, pd.MultiIndex):
                 # Flatten: take the first level (Price) and drop ticker level
                 df.columns = [col[0] if isinstance(col, tuple) else col
                                for col in df.columns]
-            # Normalise column names
             df.columns = [str(c).lower().strip().replace(" ", "_") for c in df.columns]
             print(f"  {ticker} raw columns: {list(df.columns)}")
             df["ticker"] = ticker
             df["sector"] = SECTOR_MAP[ticker]
-            # Map any variant of close column
             if "adj_close" in df.columns:
                 df = df.rename(columns={"adj_close": "close"})
             keep = ["date", "ticker", "sector", "open", "high", "low",

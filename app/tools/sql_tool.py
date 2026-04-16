@@ -15,8 +15,6 @@ from google import genai
 from google.genai import types
 
 log = logging.getLogger(__name__)
-
-# Resolve DB path relative to this file, works on Windows and Linux
 DB_PATH = str(Path(__file__).resolve().parents[2] / "data" / "market.duckdb")
 log.info("sql_tool: DB_PATH resolved to %s", DB_PATH)
 
@@ -81,7 +79,6 @@ Rules:
 
 
 def generate_sql(question: str) -> str:
-    """Use Gemini to translate a natural-language question into DuckDB SQL."""
     response = _client.models.generate_content(
         model=MODEL,
         contents=question,
@@ -99,10 +96,6 @@ def generate_sql(question: str) -> str:
 
 
 def execute_sql(sql: str) -> tuple[pd.DataFrame, str]:
-    """Execute SQL against the local DuckDB file."""
-    # Strip LIMIT 1 — it breaks any comparison/ranking query
-    # Use regex to catch variants like LIMIT 1; or LIMIT 1
-
     import re as _re
     cleaned = _re.sub(r'LIMIT\s+1\s*;?', '', sql, flags=_re.IGNORECASE).strip()
     if cleaned != sql:
@@ -126,10 +119,6 @@ def execute_sql(sql: str) -> tuple[pd.DataFrame, str]:
 
 
 def run_text2sql(question: str) -> dict:
-    """
-    Full pipeline: question -> SQL -> execute -> return result dict.
-    Used by the Collector agent as a tool.
-    """
     sql = generate_sql(question)
     df, err = execute_sql(sql)
 
@@ -155,17 +144,14 @@ def run_text2sql(question: str) -> dict:
             "json_data": "[]",
         }
 
-    # Hard cap: truncate to 100 rows to keep json_data safely within LLM context
     if len(df) > 100:
         log.warning("run_text2sql: truncating %d rows to 100", len(df))
         df = df.head(100)
 
     json_data = df.to_json(orient="records", date_format="iso")
 
-    # Safety cap on json_data string size (max ~50KB)
     if len(json_data) > 50_000:
         log.warning("run_text2sql: json_data too large (%d chars), truncating", len(json_data))
-        # Re-truncate to fewer rows until it fits
         for n in [50, 20, 10]:
             json_data = df.head(n).to_json(orient="records", date_format="iso")
             if len(json_data) <= 50_000:

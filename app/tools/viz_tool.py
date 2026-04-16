@@ -1,10 +1,3 @@
-"""
-tools/viz_tool.py — Chart generator for the EDA / Hypothesis agents.
-
-Generates matplotlib charts, saves to disk as artifacts, and
-returns base64-encoded PNG for the frontend to render inline.
-"""
-
 from __future__ import annotations
 import base64
 import io

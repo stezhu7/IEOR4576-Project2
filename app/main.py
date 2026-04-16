@@ -1,7 +1,3 @@
-"""
-app/main.py — FastAPI entry point for the Stock Market Analyst AI
-"""
-
 import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse

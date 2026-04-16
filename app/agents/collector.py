@@ -1,13 +1,3 @@
-"""
-agents/collector.py — Collector Agent (Step 1: Collect)
-
-Responsibilities:
-- Decide whether to use SQL (historical DB) or live API (recent data)
-- Generate and execute Text2SQL query against DuckDB
-- Optionally fetch live data via yfinance API
-- Return CollectedData structured output
-"""
-
 from __future__ import annotations
 import json
 import os

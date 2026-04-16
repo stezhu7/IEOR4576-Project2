@@ -1,13 +1,3 @@
-"""
-agents/hypothesis.py — Hypothesis Agent (Step 3: Hypothesize)
-
-Responsibilities:
-- Receive EDAFindings from the EDA agent
-- Form a data-grounded hypothesis
-- Write an analyst memo with evidence points and caveats
-- Return HypothesisReport structured output
-"""
-
 from __future__ import annotations
 import os
 from google.adk.agents import LlmAgent

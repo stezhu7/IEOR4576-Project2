@@ -1,16 +1,3 @@
-"""
-agents/orchestrator.py — Orchestrator Agent (root)
-
-Responsibilities:
-- Semantic intent classification (in_scope / oos / safety)
-- Positive-framing OOS/safety responses
-- Route in-scope queries through Collector → EDA → Hypothesis pipeline
-- Drive the iterative refinement loop (up to MAX_REFINEMENTS)
-- Assemble the final ChatResponse
-
-SDK: google.genai (Vertex AI) — consistent across the entire codebase.
-"""
-
 from __future__ import annotations
 import inspect
 import json
@@ -213,7 +200,6 @@ SAFETY_RESPONSE = (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _parse_json(text: str) -> dict:
-    """Strip markdown fences and parse JSON from LLM output."""
     text = re.sub(r"^```(?:json)?", "", text.strip(), flags=re.I).strip()
     text = re.sub(r"```$", "", text).strip()
     return json.loads(text)
@@ -234,13 +220,8 @@ def _gemini_call(system: str, user: str, temperature: float = 0.0) -> str:
     return (response.text or "").strip()
 
 
-# ── Tool declaration builder ──────────────────────────────────────────────────
 
 def _build_tools(funcs: list) -> list[types.Tool]:
-    """
-    Build google.genai Tool declarations from plain Python functions.
-    Derives parameter schemas from type annotations via inspect.
-    """
     declarations = []
     for fn in funcs:
         sig      = inspect.signature(fn)
@@ -283,7 +264,6 @@ def _build_tools(funcs: list) -> list[types.Tool]:
     return [types.Tool(function_declarations=declarations)]
 
 
-# ── Agentic loop ──────────────────────────────────────────────────────────────
 
 def _agentic_loop(
     system: str,
@@ -300,9 +280,6 @@ def _agentic_loop(
         types.Content(role="user", parts=[types.Part(text=user_input)])
     ]
 
-    # gemini-2.5-flash has thinking enabled by default.
-    # Disable it (thinking_budget=0) to avoid thought parts breaking
-    # the agentic loop and tool-call detection.
     thinking_cfg = types.ThinkingConfig(thinking_budget=0)
 
     forced_config = types.GenerateContentConfig(
@@ -341,11 +318,9 @@ def _agentic_loop(
         candidate = response.candidates[0]
         parts     = candidate.content.parts
 
-        # Log finish reason if not STOP
         finish_reason = candidate.finish_reason if hasattr(candidate, "finish_reason") else "unknown"
         log.info("_agentic_loop turn %d: finish_reason=%s, parts=%d", turn, finish_reason, len(parts))
 
-        # Filter out thought parts (gemini-2.5 thinking traces have thought=True)
         fn_call_parts = [p for p in parts
                          if p.function_call is not None
                          and not getattr(p, "thought", False)]
@@ -364,10 +339,8 @@ def _agentic_loop(
             log.info("_agentic_loop turn %d: final text length=%d, preview=%r", turn, len(text), text[:200])
             return text
 
-        # Append model turn to history
         history.append(types.Content(role="model", parts=parts))
 
-        # Execute each function call and collect responses
         tool_response_parts: list[types.Part] = []
         for part in fn_call_parts:
             fn_name = part.function_call.name
@@ -395,10 +368,9 @@ def _agentic_loop(
         history.append(types.Content(role="tool", parts=tool_response_parts))
 
     log.warning("_agentic_loop: exhausted %d turns without text response", max_turns)
-    return ""  # Exhausted max_turns without a text response
+    return ""  
 
 
-# ── Per-agent runners ─────────────────────────────────────────────────────────
 
 def classify_intent(user_text: str) -> RouteDecision:
     """Semantic intent classification — single call, no tools."""
@@ -449,8 +421,6 @@ def run_eda(collected: CollectedData) -> EDAFindings | None:
     tool_map = {"run_stats": run_stats, "run_viz": run_viz}
     tools    = _build_tools([run_stats, run_viz])
 
-    # Pass raw_json (the actual data rows) directly so run_stats receives
-    # the row array, not a wrapper object.
     payload  = json.dumps({
         "raw_json":         collected.raw_json,
         "columns":          collected.columns,
@@ -503,7 +473,6 @@ def run_hypothesis(eda: EDAFindings) -> HypothesisReport | None:
         )
 
 
-# ── Main pipeline ─────────────────────────────────────────────────────────────
 
 def run_pipeline(user_text: str) -> ChatResponse:
     """
@@ -526,7 +495,6 @@ def run_pipeline(user_text: str) -> ChatResponse:
 
 
 def _run_pipeline_inner(user_text: str) -> ChatResponse:
-    # 0 — Route
     route = classify_intent(user_text)
 
     if route.intent == "safety":
@@ -535,8 +503,6 @@ def _run_pipeline_inner(user_text: str) -> ChatResponse:
         return ChatResponse(answer=OOS_RESPONSE, backstop="oos")
 
     query = route.refined_query
-
-    # 1 — Collect
     collected = run_collector(query)
     if not collected:
         return ChatResponse(
@@ -544,7 +510,6 @@ def _run_pipeline_inner(user_text: str) -> ChatResponse:
             backstop="collect_error",
         )
 
-    # 2 — EDA + iterative refinement loop
     eda      = None
     attempts = 0
     for attempt in range(MAX_REFINEMENTS):
@@ -567,7 +532,6 @@ def _run_pipeline_inner(user_text: str) -> ChatResponse:
             backstop="eda_error",
         )
 
-    # 3 — Hypothesis
     hypothesis = run_hypothesis(eda)
     if not hypothesis:
         return ChatResponse(
@@ -577,7 +541,6 @@ def _run_pipeline_inner(user_text: str) -> ChatResponse:
             chart_title=eda.chart_title,
         )
 
-    # Assemble final answer
     lines = [f"## {hypothesis.headline}\n", hypothesis.full_narrative, "\n\n**Evidence:**"]
     for ev in hypothesis.evidence:
         lines.append(f"- **{ev.claim}**: {ev.supporting_data}")

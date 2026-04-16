@@ -11,10 +11,6 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-# ---------------------------------------------------------------------------
-# Orchestrator routing
-# ---------------------------------------------------------------------------
-
 class RouteDecision(BaseModel):
     """Output of the orchestrator's intent-classification step."""
     intent: Literal["in_scope", "oos", "safety"]
@@ -24,9 +20,6 @@ class RouteDecision(BaseModel):
     )
 
 
-# ---------------------------------------------------------------------------
-# Step 1 — Collector
-# ---------------------------------------------------------------------------
 
 class DataSource(BaseModel):
     source_type: Literal["sql", "api", "both"]
@@ -44,9 +37,6 @@ class CollectedData(BaseModel):
     collection_notes: str             = Field(description="What was collected and any caveats.")
 
 
-# ---------------------------------------------------------------------------
-# Step 2 — EDA
-# ---------------------------------------------------------------------------
 
 class StatResult(BaseModel):
     metric: str
@@ -71,9 +61,6 @@ class EDAFindings(BaseModel):
     eda_notes: str                    = Field(description="Narrative description of the exploration.")
 
 
-# ---------------------------------------------------------------------------
-# Step 3 — Hypothesis
-# ---------------------------------------------------------------------------
 
 class EvidencePoint(BaseModel):
     claim: str
@@ -91,9 +78,6 @@ class HypothesisReport(BaseModel):
     full_narrative: str               = Field(description="Full analyst memo, 3-5 paragraphs.")
 
 
-# ---------------------------------------------------------------------------
-# API response (returned to the frontend)
-# ---------------------------------------------------------------------------
 
 class ChatResponse(BaseModel):
     answer: str                       = Field(description="Human-readable response text.")

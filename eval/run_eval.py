@@ -1,8 +1,4 @@
 """
-eval/run_eval.py — Evaluation runner
-
-Deterministic checks + MaaJ (Claude claude-sonnet-4-6 as judge, different from the Gemini generator)
-
 Usage:
     python eval/run_eval.py [--base-url http://localhost:8080] [--judge]
 """
@@ -19,12 +15,9 @@ import requests
 
 DATASET_PATH = Path(__file__).parent / "dataset.jsonl"
 
-# MaaJ uses Claude (different model family from Gemini generator)
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL      = "claude-sonnet-4-6"
 
-
-# ── Deterministic checks ─────────────────────────────────────────────────────
 
 def check_must_contain_any(answer: str, keywords: list[str]) -> tuple[bool, str]:
     answer_lower = answer.lower()
@@ -80,7 +73,6 @@ def run_deterministic(case: dict, answer: str, backstop: str) -> tuple[bool, lis
     return len(failures) == 0, failures
 
 
-# ── MaaJ (Claude as judge) ───────────────────────────────────────────────────
 
 JUDGE_SYSTEM = """
 You are a strict evaluator for a US stock market data analyst AI.
@@ -139,7 +131,6 @@ def judge_with_claude(question: str, answer: str, rubric: str) -> dict:
         return {"pass_": None, "rationale": f"Judge error: {e}", "missing": []}
 
 
-# ── Runner ────────────────────────────────────────────────────────────────────
 
 def run_case(case: dict, base_url: str, use_judge: bool) -> dict:
     start = time.time()

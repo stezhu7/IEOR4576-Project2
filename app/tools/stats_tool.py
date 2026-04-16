@@ -1,10 +1,3 @@
-"""
-tools/stats_tool.py — Deterministic statistical aggregations for the EDA agent.
-
-Takes a JSON-serialised DataFrame (from CollectedData.raw_json) and returns
-computed metrics as a list of StatResult-compatible dicts.
-"""
-
 from __future__ import annotations
 import json
 import math
@@ -182,12 +175,9 @@ def run_stats(json_data: str, analysis_type: str = "auto") -> dict:
         return {"stats": [], "anomalies": [], "error": "Empty dataset"}
 
     stats = []
-    # Convert date column
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-    # Detect if this is pre-aggregated data (no raw OHLCV close column)
-    # Pre-aggregated: has return/volatility/surprise columns but no 'close'
     has_raw_prices = "close" in df.columns
     has_precomputed = any(
         c for c in df.columns

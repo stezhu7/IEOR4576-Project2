@@ -37,7 +37,3 @@ Thumbs.db
 desktop.ini
 *.log
 
-# NOTE: data/market.duckdb IS intentionally included here (not ignored)
-# so it gets copied into the Docker image by:
-#   COPY data/market.duckdb ./data/market.duckdb
-# in the Dockerfile. Without it, Cloud Run has no DB to query.

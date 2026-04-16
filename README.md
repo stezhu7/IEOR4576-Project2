@@ -4,14 +4,14 @@ A multi-agent system that performs the first three steps of a data analysis life
 
 Ask questions like:
 - *"Which S&P 500 sector had the highest average return in 2023?"*
-- *"Compare FAANG volatility over the last 2 years"*
+- *"Compare XXX volatility over the last 2 years"*
 - *"Is there a correlation between earnings surprise and next-day price movement?"*
 
 ---
 
 ## Live Demo
 
-**Deployed URL:** `https://ieor4576-project2-git-7610618360.us-central1.run.app`
+**Deployed URL:** `https://ieor4576-project2-git-7610618360.us-central1.run.app/`
 
 ---
 
@@ -94,7 +94,7 @@ Orchestrator (semantic intent classification)
         └── grounded narrative + evidence + caveats
             │
             ▼
-        Frontend response (answer + chart + stat pills)
+        Frontend response
 ```
 
 **Multi-agent pattern:** Orchestrator-handoff. The root orchestrator classifies intent and drives the pipeline imperatively, handing off to each sub-agent in sequence. Each agent has a distinct system prompt and responsibility. The orchestrator also runs an **iterative refinement loop** — if the EDA agent returns `sufficient=false`, the orchestrator re-invokes the collector with a narrowed query (up to `MAX_REFINEMENTS=3` attempts).
@@ -106,7 +106,7 @@ Orchestrator (semantic intent classification)
 | Requirement | Implementation |
 |---|---|
 | Frontend | `static/index.html` — dark-themed chat UI with inline chart rendering, stat pills, pipeline progress indicator |
-| Agent framework | Google ADK (`google-adk`) — `LlmAgent` with `FunctionTool` wrappers in `app/agents/` |
+| Agent framework | `google-genai` (Vertex AI) — custom multi-turn agentic loop in `app/agents/orchestrator.py` → `_agentic_loop`, with 4 agents each defined by a distinct system prompt (ROUTE_SYSTEM, COLLECTOR_SYSTEM, EDA_SYSTEM, HYPOTHESIS_SYSTEM) |
 | Tool calling | `run_text2sql`, `run_api_fetch`, `run_stats`, `run_viz` — all called at runtime via the agentic loop |
 | Non-trivial dataset | 69,025 OHLCV rows + 220 earnings rows in DuckDB — dynamically queried, not dumped into context |
 | Multi-agent pattern | Orchestrator → Collector → EDA → Hypothesis (4 agents, distinct system prompts, orchestrator-handoff) |
@@ -155,8 +155,8 @@ cd project2
 uv sync
 
 # Set environment variables
-export GOOGLE_CLOUD_PROJECT=your-project-id
-export GOOGLE_CLOUD_REGION=us-central1   # optional, defaults to us-central1
+export GOOGLE_CLOUD_PROJECT=my-project-4576-project2
+export GOOGLE_CLOUD_REGION=us-central1   
 
 # Build the database (one-time, ~5 minutes, requires internet)
 python data/build_db.py
@@ -175,56 +175,6 @@ uvicorn app.main:app --reload --reload-dir app
 Open `http://127.0.0.1:8000` in your browser.
 
 **Diagnostic endpoint:** `http://127.0.0.1:8000/db-check` — confirms DB path and row counts.
-
----
-
-## Running the Evaluation
-
-```bash
-# Deterministic checks only (no API key needed)
-python eval/run_eval.py --base-url http://127.0.0.1:8000
-
-# With Claude MaaJ judge (requires ANTHROPIC_API_KEY)
-export ANTHROPIC_API_KEY=your-key
-python eval/run_eval.py --base-url http://127.0.0.1:8000 --judge
-
-# Run a single test case
-python eval/run_eval.py --id in_01
-
-# Run only safety cases
-python eval/run_eval.py --category safety
-```
-
-The eval suite (`eval/dataset.jsonl`) contains 25 cases:
-- 12 in-domain questions (sector returns, volatility, earnings, correlations)
-- 6 out-of-scope questions (weather, sports, medical, coding, recipes, translation)
-- 5 safety questions (self-harm, weapons, violence)
-- 2 edge cases (single ticker, out-of-scope asset class)
-
-**Target:** ≥80% overall, 100% safety, 100% OOS.
-
-The MaaJ judge uses `claude-sonnet-4-6` (Anthropic) — a different model family from the Gemini generator — to evaluate in-domain answer quality against rubrics. Results are saved to `eval/results.json`.
-
----
-
-## Deploying to Cloud Run
-
-```bash
-export PROJECT_ID=your-project-id
-
-# Build and push
-gcloud builds submit --tag gcr.io/$PROJECT_ID/stock-analyst-ai
-
-# Deploy
-gcloud run deploy stock-analyst-ai \
-  --image gcr.io/$PROJECT_ID/stock-analyst-ai \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --memory 2Gi \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_REGION=us-central1
-```
-
-> The `market.duckdb` file is baked into the Docker image via `COPY data/market.duckdb ./data/market.duckdb` in the Dockerfile.
 
 ---
 

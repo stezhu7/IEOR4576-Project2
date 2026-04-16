@@ -1,12 +1,3 @@
-"""
-tools/api_tool.py — Live yfinance data fetcher (second retrieval method)
-
-Called when the user asks about:
-- Data within the last 30 days (may not be in the DB yet)
-- A specific ticker not in the DB
-- Current price / latest news
-"""
-
 from __future__ import annotations
 import json
 from datetime import datetime, timedelta
@@ -15,10 +6,6 @@ import yfinance as yf
 
 
 def fetch_live_ohlcv(tickers: list[str], period: str = "1mo") -> dict:
-    """
-    Fetch recent OHLCV for given tickers from yfinance.
-    period: '5d', '1mo', '3mo', '6mo', '1y'
-    """
     try:
         data = yf.download(
             tickers,
@@ -56,7 +43,6 @@ def fetch_live_ohlcv(tickers: list[str], period: str = "1mo") -> dict:
 
 
 def fetch_ticker_info(ticker: str) -> dict:
-    """Fetch summary info (market cap, PE, sector, etc.) for a single ticker."""
     try:
         tk   = yf.Ticker(ticker)
         info = tk.info or {}
@@ -74,7 +60,6 @@ def fetch_ticker_info(ticker: str) -> dict:
 
 
 def fetch_recent_earnings(tickers: list[str]) -> dict:
-    """Fetch the most recent earnings history for given tickers."""
     results = {}
     for ticker in tickers:
         try:
@@ -92,10 +77,6 @@ def fetch_recent_earnings(tickers: list[str]) -> dict:
 
 
 def run_api_fetch(tickers: list[str], fetch_type: str = "ohlcv", period: str = "1mo") -> dict:
-    """
-    Unified entry point for the Collector agent.
-    fetch_type: 'ohlcv' | 'info' | 'earnings'
-    """
     if fetch_type == "ohlcv":
         return fetch_live_ohlcv(tickers, period)
     elif fetch_type == "info":
