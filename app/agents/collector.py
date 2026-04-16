@@ -65,7 +65,7 @@ def make_collector_agent() -> LlmAgent:
 
     return LlmAgent(
         name="collector_agent",
-        model=f"projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/gemini-2.0-flash-001",
+        model=f"projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/gemini-2.5-flash",
         instruction=COLLECTOR_SYSTEM,
         tools=[sql_tool, api_tool],
         output_key="collected_data",

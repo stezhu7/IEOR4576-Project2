@@ -95,7 +95,7 @@ def make_eda_agent() -> LlmAgent:
 
     return LlmAgent(
         name="eda_agent",
-        model=f"projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/gemini-2.0-flash-001",
+        model=f"projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/gemini-2.5-flash",
         instruction=EDA_SYSTEM,
         tools=[stats_tool, viz_tool],
         output_key="eda_findings",

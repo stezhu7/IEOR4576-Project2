@@ -186,20 +186,71 @@ def run_stats(json_data: str, analysis_type: str = "auto") -> dict:
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-    if analysis_type in ("auto", "returns"):
-        stats += compute_return_stats(df)
+    # Detect if this is pre-aggregated data (no raw OHLCV close column)
+    # Pre-aggregated: has return/volatility/surprise columns but no 'close'
+    has_raw_prices = "close" in df.columns
+    has_precomputed = any(
+        c for c in df.columns
+        if any(k in c.lower() for k in ["return", "volatility", "surprise", "eps", "sharpe"])
+    )
 
-    if analysis_type in ("auto", "sector") and "sector" in df.columns:
-        stats += compute_sector_stats(df)
+    if not has_raw_prices and has_precomputed:
+        _log.info("run_stats: detected pre-aggregated data, using precomputed handler")
+        stats = compute_precomputed_stats(df)
+    else:
+        if analysis_type in ("auto", "returns"):
+            stats += compute_return_stats(df)
 
-    if analysis_type in ("auto", "earnings") and "surprise_percent" in df.columns:
-        stats += compute_earnings_stats(df)
+        if analysis_type in ("auto", "sector") and "sector" in df.columns:
+            stats += compute_sector_stats(df)
 
-    anomalies = detect_anomalies(df)
+        if analysis_type in ("auto", "earnings") and "surprise_percent" in df.columns:
+            stats += compute_earnings_stats(df)
 
+    anomalies = detect_anomalies(df) if has_raw_prices else []
+
+    _log.info("run_stats: produced %d stats", len(stats))
     return {
         "stats":      stats,
         "anomalies":  anomalies,
         "row_count":  len(df),
         "columns":    list(df.columns),
     }
+
+
+def compute_precomputed_stats(df: pd.DataFrame) -> list[dict]:
+    """
+    Handle DataFrames that already contain aggregated metrics
+    (e.g. annualised_return, avg_daily_return, volatility per sector/ticker).
+    Extracts each numeric column as a StatResult per row.
+    """
+    results = []
+    # Detect label column (sector or ticker)
+    label_col = None
+    for c in ["sector", "ticker", "name"]:
+        if c in df.columns:
+            label_col = c
+            break
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    for _, row in df.iterrows():
+        label = str(row[label_col]) if label_col else "row"
+        for col in numeric_cols:
+            val = row[col]
+            if pd.isna(val):
+                continue
+            # Detect unit
+            if any(k in col for k in ["return", "yield", "growth", "surprise"]):
+                unit = "ratio" if abs(val) < 5 else "%"
+            elif any(k in col for k in ["volatility", "std", "vol"]):
+                unit = "annualised"
+            elif any(k in col for k in ["volume", "count", "observations"]):
+                unit = "count"
+            else:
+                unit = None
+            results.append({
+                "metric": f"{label} {col}",
+                "value":  _safe_float(val),
+                "unit":   unit,
+            })
+    return results

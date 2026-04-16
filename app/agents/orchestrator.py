@@ -31,7 +31,7 @@ from app.schemas import (
 
 PROJECT  = os.environ.get("GOOGLE_CLOUD_PROJECT")
 LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
-MODEL    = "gemini-2.0-flash-001"
+MODEL    = "gemini-2.5-flash"
 
 _client = genai.Client(vertexai=True, project=PROJECT, location=LOCATION)
 
@@ -102,8 +102,10 @@ Examples of good queries for common questions:
   FROM daily WHERE dr IS NOT NULL
   GROUP BY sector ORDER BY annualised_return DESC
 
-IMPORTANT: Never add LIMIT 1 when comparing sectors — always return ALL sectors so the
-hypothesis agent can rank and compare them properly.
+CRITICAL: NEVER use LIMIT 1 or LIMIT with any number when the question involves comparing
+sectors or tickers. Always return ALL rows. A single row cannot be analysed or ranked.
+The question asks which sector is HIGHEST — to answer that you must return ALL sectors ranked,
+not just the top one. LIMIT 1 destroys the comparison entirely.
 
 MANDATORY: Call run_text2sql(question=<the user's question>) FIRST.
 Only after the tool returns results, build your JSON response.

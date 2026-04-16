@@ -70,7 +70,7 @@ Note: set chart_base64 to null — the chart was already generated in the EDA st
 def make_hypothesis_agent() -> LlmAgent:
     return LlmAgent(
         name="hypothesis_agent",
-        model=f"projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/gemini-2.0-flash-001",
+        model=f"projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/gemini-2.5-flash",
         instruction=HYPOTHESIS_SYSTEM,
         tools=[],
         output_key="hypothesis_report",

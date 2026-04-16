@@ -24,7 +24,7 @@ PROJECT  = os.environ.get("GOOGLE_CLOUD_PROJECT")
 LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
 
 _client = genai.Client(vertexai=True, project=PROJECT, location=LOCATION)
-MODEL   = "gemini-2.0-flash-001"
+MODEL   = "gemini-2.5-flash"
 
 SCHEMA_CONTEXT = """
 DuckDB database: market.duckdb
@@ -100,6 +100,15 @@ def generate_sql(question: str) -> str:
 
 def execute_sql(sql: str) -> tuple[pd.DataFrame, str]:
     """Execute SQL against the local DuckDB file."""
+    # Strip LIMIT 1 — it breaks any comparison/ranking query
+    # Use regex to catch variants like LIMIT 1; or LIMIT 1
+
+    import re as _re
+    cleaned = _re.sub(r'LIMIT\s+1\s*;?', '', sql, flags=_re.IGNORECASE).strip()
+    if cleaned != sql:
+        log.warning("execute_sql: removed LIMIT 1 from SQL")
+        sql = cleaned
+
     log.info("execute_sql: connecting to %s", DB_PATH)
     if not Path(DB_PATH).exists():
         err = f"DB file not found: {DB_PATH}"
