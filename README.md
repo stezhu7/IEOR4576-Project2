@@ -4,9 +4,8 @@ A multi-agent system that performs the first three steps of a data analysis life
 
 Ask questions like:
 - *"Which S&P 500 sector had the highest average return in 2023?"*
-- *"Compare FAANG volatility over the last 2 years"*
+- *"Compare XXX volatility over the last 2 years"*
 - *"What company has the highest market cap in S&P 500 right now?"*
-- *"Is there a correlation between earnings surprise and next-day price movement?"*
 
 ---
 
