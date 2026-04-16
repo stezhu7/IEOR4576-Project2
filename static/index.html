@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Stock Market Analyst AI</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --surface2:  #22263a;
+    --border:    #2e3250;
+    --accent:    #4f8ef7;
+    --accent2:   #f7914f;
+    --text:      #e0e2f0;
+    --muted:     #8890a8;
+    --success:   #4ff798;
+    --warning:   #f7e04f;
+    --danger:    #f74f4f;
+    --radius:    10px;
+    --font:      'Inter', 'Segoe UI', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .logo { font-size: 20px; }
+  .header-title { font-size: 17px; font-weight: 600; }
+  .header-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--success); margin-left: auto;
+    box-shadow: 0 0 6px var(--success);
+  }
+
+  /* Suggested prompts */
+  .suggestions {
+    display: flex;
+    gap: 8px;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .suggestion-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .suggestion-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Chat area */
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Message bubbles */
+  .msg { display: flex; gap: 10px; max-width: 860px; }
+  .msg.user  { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.bot   { align-self: flex-start; }
+
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0; margin-top: 2px;
+  }
+  .msg.user .avatar { background: var(--accent); }
+  .msg.bot  .avatar { background: var(--surface2); border: 1px solid var(--border); }
+
+  .bubble {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    line-height: 1.7;
+  }
+  .msg.user .bubble {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    border-radius: var(--radius) 2px var(--radius) var(--radius);
+  }
+  .msg.bot .bubble {
+    border-radius: 2px var(--radius) var(--radius) var(--radius);
+  }
+
+  /* Markdown-ish rendering */
+  .bubble h2 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--accent); }
+  .bubble strong { font-weight: 600; color: var(--text); }
+  .bubble em { color: var(--muted); font-style: italic; }
+  .bubble ul { padding-left: 18px; }
+  .bubble li { margin-bottom: 3px; }
+  .bubble p  { margin-bottom: 8px; }
+  .bubble p:last-child { margin-bottom: 0; }
+
+  /* Chart */
+  .chart-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-top: 10px;
+  }
+  .chart-title { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .chart-card img { width: 100%; border-radius: 6px; }
+
+  /* Stats pills */
+  .stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .stat-pill {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .stat-pill span { color: var(--accent2); font-weight: 600; }
+
+  /* Meta row */
+  .meta-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .badge.sql    { background: #1a3a5c; color: #4f8ef7; }
+  .badge.api    { background: #3a2a1a; color: #f7914f; }
+  .badge.both   { background: #1a3a2a; color: #4ff798; }
+  .badge.high   { background: #1a3a1a; color: #4ff798; }
+  .badge.medium { background: #3a3a1a; color: #f7e04f; }
+  .badge.low    { background: #3a1a1a; color: #f74f4f; }
+
+  /* Typing indicator */
+  .typing-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    background: var(--muted);
+    border-radius: 50%;
+    animation: blink 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+
+  /* Progress steps */
+  .pipeline-progress {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .step { padding: 2px 8px; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border); }
+  .step.active { border-color: var(--accent); color: var(--accent); }
+  .step.done   { border-color: var(--success); color: var(--success); }
+
+  /* Input area */
+  .input-area {
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  #input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.15s;
+    min-height: 44px;
+    max-height: 120px;
+  }
+  #input:focus { border-color: var(--accent); }
+  #input::placeholder { color: var(--muted); }
+
+  #send {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  #send:hover   { opacity: 0.85; }
+  #send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Scrollbar */
+  #chat::-webkit-scrollbar { width: 6px; }
+  #chat::-webkit-scrollbar-track { background: transparent; }
+  #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📈</div>
+  <div>
+    <div class="header-title">Stock Market Analyst AI</div>
+    <div class="header-sub">Collect · Explore · Hypothesize — S&amp;P 500 data analysis</div>
+  </div>
+  <div class="status-dot" id="status-dot"></div>
+</header>
+
+<div class="suggestions" id="suggestions">
+  <div class="suggestion-chip" onclick="setPrompt('Which S&P 500 sector had the highest average return in 2023?')">Sector returns 2023</div>
+  <div class="suggestion-chip" onclick="setPrompt('Compare the volatility of FAANG stocks over the last 2 years')">FAANG volatility</div>
+  <div class="suggestion-chip" onclick="setPrompt('Is there a correlation between earnings surprise and next-day price movement?')">Earnings surprise correlation</div>
+  <div class="suggestion-chip" onclick="setPrompt('Which technology stocks had the best Sharpe ratio in 2022?')">Best Sharpe ratio</div>
+  <div class="suggestion-chip" onclick="setPrompt('How did Energy sector perform compared to Healthcare in 2023?')">Energy vs Healthcare</div>
+</div>
+
+<div id="chat">
+  <div class="msg bot">
+    <div class="avatar">🤖</div>
+    <div class="bubble">
+      <strong>Welcome to Stock Market Analyst AI.</strong><br>
+      I analyse US stock market data across 50 S&amp;P 500 tickers and 11 sectors.<br><br>
+      I can help you with:<br>
+      &bull; Sector performance comparisons and rankings<br>
+      &bull; Volatility and risk metrics (Sharpe ratio, annualised volatility)<br>
+      &bull; Earnings surprise analysis<br>
+      &bull; Correlation studies between market variables<br>
+      &bull; Multi-year trend analysis<br><br>
+      Try one of the suggestions above, or type your own question.
+    </div>
+  </div>
+</div>
+
+<div class="input-area">
+  <textarea id="input" placeholder="Ask about stocks, sectors, earnings..." rows="1"
+    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"
+    oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+  <button id="send" onclick="send()">Analyse →</button>
+</div>
+
+<script>
+  function setPrompt(text) {
+    const inp = document.getElementById('input');
+    inp.value = text;
+    inp.style.height = 'auto';
+    inp.style.height = inp.scrollHeight + 'px';
+    inp.focus();
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function renderMarkdown(text) {
+    // Very lightweight markdown: ##, **, *, -
+    return text
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>\n?)+/g, s => `<ul>${s}</ul>`)
+      .replace(/\n{2,}/g, '</p><p>')
+      .replace(/^(?!<[hup])/gm, '')
+      .replace(/(.+)(?!<\/[hup]>)$/gm, s => s.startsWith('<') ? s : `<p>${s}</p>`);
+  }
+
+  function appendMsg(role, html) {
+    const chat = document.getElementById('chat');
+    const div  = document.createElement('div');
+    div.className = `msg ${role}`;
+    div.innerHTML = `
+      <div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>
+      <div class="bubble">${html}</div>
+    `;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+  }
+
+  function showTyping() {
+    return appendMsg('bot',
+      `<div class="pipeline-progress" id="pp">
+        <span class="step" id="s1">1 · Collect</span>
+        <span style="color:#3a3d4d">→</span>
+        <span class="step" id="s2">2 · EDA</span>
+        <span style="color:#3a3d4d">→</span>
+        <span class="step" id="s3">3 · Hypothesize</span>
+      </div>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>`
+    );
+  }
+
+  function updateStep(n) {
+    for (let i = 1; i <= 3; i++) {
+      const el = document.getElementById(`s${i}`);
+      if (!el) return;
+      el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+    }
+  }
+
+  function removeMsg(el) { el?.remove(); }
+
+  async function send() {
+    const inp  = document.getElementById('input');
+    const btn  = document.getElementById('send');
+    const text = inp.value.trim();
+    if (!text) return;
+
+    inp.value = '';
+    inp.style.height = 'auto';
+    btn.disabled = true;
+
+    appendMsg('user', escHtml(text));
+    const typing = showTyping();
+
+    // Simulate step progress
+    updateStep(1);
+    const t1 = setTimeout(() => updateStep(2), 3000);
+    const t2 = setTimeout(() => updateStep(3), 8000);
+
+    try {
+      const res  = await fetch('/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text}),
+      });
+      const data = await res.json();
+      clearTimeout(t1); clearTimeout(t2);
+      removeMsg(typing);
+      renderResponse(data);
+    } catch (e) {
+      clearTimeout(t1); clearTimeout(t2);
+      removeMsg(typing);
+      appendMsg('bot', `<span style="color:var(--danger)">Error: ${escHtml(String(e))}</span>`);
+    } finally {
+      btn.disabled = false;
+      inp.focus();
+    }
+  }
+
+  function renderResponse(data) {
+    const chat = document.getElementById('chat');
+    const div  = document.createElement('div');
+    div.className = 'msg bot';
+
+    let inner = `<div class="bubble">`;
+    inner += renderMarkdown(escHtml(data.answer || ''));
+
+    // Chart
+    if (data.chart_base64) {
+      inner += `<div class="chart-card">
+        <div class="chart-title">${escHtml(data.chart_title || 'Analysis Chart')}</div>
+        <img src="data:image/png;base64,${data.chart_base64}" alt="chart"/>
+      </div>`;
+    }
+
+    // Stats pills (top 6)
+    if (data.eda_stats && data.eda_stats.length) {
+      inner += `<div class="stats-bar">`;
+      data.eda_stats.slice(0, 6).forEach(s => {
+        const val = typeof s.value === 'number'
+          ? (Math.abs(s.value) < 10 ? (s.value * 100).toFixed(1) + '%' : s.value.toFixed(2))
+          : String(s.value);
+        inner += `<div class="stat-pill">${escHtml(s.metric)}: <span>${escHtml(val)}</span></div>`;
+      });
+      inner += `</div>`;
+    }
+
+    // Meta row
+    const src  = data.data_source || '';
+    const conf = data.confidence  || '';
+    const tag  = (data.backstop   || '').split('/')[0];
+    inner += `<div class="meta-row">`;
+    if (src)  inner += `<span class="badge ${src}">${src.toUpperCase()}</span>`;
+    if (conf) inner += `<span class="badge ${conf}">${conf} confidence</span>`;
+    if (tag && tag !== 'pipeline') inner += `<span class="badge">${escHtml(tag)}</span>`;
+    inner += `</div>`;
+
+    inner += `</div>`;
+    div.innerHTML = `<div class="avatar">🤖</div>${inner}`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  // Health check
+  fetch('/health').then(r => r.json()).then(d => {
+    document.getElementById('status-dot').style.background =
+      d.status === 'healthy' ? 'var(--success)' : 'var(--danger)';
+  }).catch(() => {
+    document.getElementById('status-dot').style.background = 'var(--danger)';
+  });
+</script>
+</body>
+</html>

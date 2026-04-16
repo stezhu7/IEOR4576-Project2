@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# uv
+.uv/
+uv.lock
+
+# Environment variables
+.env
+.env.*
+
+# Data — DB is large and rebuilt via build_db.py
+data/market.duckdb
+
+# Generated artifacts (charts saved at runtime)
+artifacts/
+
+# Eval results
+eval/results.json
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Google Cloud credentials (never commit these)
+*credentials*.json
+application_default_credentials.json

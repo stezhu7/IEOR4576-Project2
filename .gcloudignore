@@ -1,0 +1,43 @@
+# Git internals
+.git/
+.gitignore
+
+# Python caches — rebuilt inside the container
+__pycache__/
+*.py[cod]
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Virtual environment — deps installed by uv inside the container
+.venv/
+venv/
+
+# uv lock file not needed at build time (deps declared in pyproject.toml)
+uv.lock
+
+# Local env files — secrets injected via Cloud Run env vars, not baked in
+.env
+.env.*
+
+# Dev/test files not needed in production image
+eval/
+eval/results.json
+
+# Generated artifacts — created at runtime inside the container
+artifacts/
+
+# IDE and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# NOTE: data/market.duckdb IS intentionally included here (not ignored)
+# so it gets copied into the Docker image by:
+#   COPY data/market.duckdb ./data/market.duckdb
+# in the Dockerfile. Without it, Cloud Run has no DB to query.
