@@ -22,8 +22,6 @@ uv.lock
 .env
 .env.*
 
-# Data — DB is large and rebuilt via build_db.py
-data/market.duckdb
 
 # Generated artifacts (charts saved at runtime)
 artifacts/

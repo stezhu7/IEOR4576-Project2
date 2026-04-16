@@ -11,7 +11,7 @@ Ask questions like:
 
 ## Live Demo
 
-**Deployed URL:** `https://<your-cloud-run-url>`
+**Deployed URL:** `https://ieor4576-project2-git-7610618360.us-central1.run.app`
 
 ---
 
