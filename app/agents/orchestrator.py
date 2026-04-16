@@ -228,6 +228,7 @@ def _gemini_call(system: str, user: str, temperature: float = 0.0) -> str:
             system_instruction=system,
             temperature=temperature,
             max_output_tokens=8192,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     return (response.text or "").strip()
@@ -299,23 +300,27 @@ def _agentic_loop(
         types.Content(role="user", parts=[types.Part(text=user_input)])
     ]
 
-    # tool_config forces the model to call a tool on the first turn
-    # rather than reasoning/hallucinating the answer directly
+    # gemini-2.5-flash has thinking enabled by default.
+    # Disable it (thinking_budget=0) to avoid thought parts breaking
+    # the agentic loop and tool-call detection.
+    thinking_cfg = types.ThinkingConfig(thinking_budget=0)
+
     forced_config = types.GenerateContentConfig(
         system_instruction=system,
         temperature=0.1,
         max_output_tokens=8192,
         tools=tools,
+        thinking_config=thinking_cfg,
         tool_config=types.ToolConfig(
             function_calling_config=types.FunctionCallingConfig(mode="ANY")
         ),
     )
-    # After first tool call, switch to AUTO so the model can choose to stop
     auto_config = types.GenerateContentConfig(
         system_instruction=system,
         temperature=0.1,
         max_output_tokens=8192,
         tools=tools,
+        thinking_config=thinking_cfg,
         tool_config=types.ToolConfig(
             function_calling_config=types.FunctionCallingConfig(mode="AUTO")
         ),
@@ -340,15 +345,22 @@ def _agentic_loop(
         finish_reason = candidate.finish_reason if hasattr(candidate, "finish_reason") else "unknown"
         log.info("_agentic_loop turn %d: finish_reason=%s, parts=%d", turn, finish_reason, len(parts))
 
-        fn_call_parts = [p for p in parts if p.function_call is not None]
+        # Filter out thought parts (gemini-2.5 thinking traces have thought=True)
+        fn_call_parts = [p for p in parts
+                         if p.function_call is not None
+                         and not getattr(p, "thought", False)]
+        text_parts    = [p for p in parts
+                         if p.text
+                         and not getattr(p, "thought", False)]
+
         log.info("_agentic_loop turn %d: fn_calls=%s, text_parts=%d",
                  turn,
                  [p.function_call.name for p in fn_call_parts],
-                 sum(1 for p in parts if p.text))
+                 len(text_parts))
 
         if not fn_call_parts:
             # No tool calls — model has produced its final text answer
-            text = "".join(p.text for p in parts if p.text).strip()
+            text = "".join(p.text for p in text_parts).strip()
             log.info("_agentic_loop turn %d: final text length=%d, preview=%r", turn, len(text), text[:200])
             return text
 
