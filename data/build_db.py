@@ -1,15 +1,3 @@
-"""
-build_db.py  –  run once to create data/market.duckdb
-
-Usage:
-    pip install yfinance duckdb pandas
-    python data/build_db.py
-
-Downloads ~5 years of daily OHLCV for 50 S&P 500 tickers across 11 sectors,
-plus quarterly earnings (EPS actual vs estimate) from yfinance.
-Stores everything in DuckDB so the agent can run SQL against it at runtime.
-"""
-
 import os
 import time
 import duckdb

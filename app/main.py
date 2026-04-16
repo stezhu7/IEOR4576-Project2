@@ -32,7 +32,6 @@ def health():
 
 @app.get("/debug-collect")
 def debug_collect():
-    """Test just the collector stage."""
     from app.agents.orchestrator import run_collector
     try:
         result = run_collector("Which S&P 500 sector had the highest average return in 2023?")
@@ -54,7 +53,6 @@ def debug_collect():
 
 @app.get("/debug-stats")
 def debug_stats():
-    """Test run_stats directly with a known good payload."""
     from app.tools.stats_tool import run_stats
     import json
     sample = json.dumps([
@@ -68,7 +66,6 @@ def debug_stats():
 
 @app.get("/db-check")
 def db_check():
-    """Quick diagnostic: confirms DB exists and has data."""
     import duckdb
     from pathlib import Path
     db_path = Path(__file__).resolve().parents[1] / "data" / "market.duckdb"

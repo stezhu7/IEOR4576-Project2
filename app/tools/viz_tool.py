@@ -1,10 +1,3 @@
-"""
-tools/viz_tool.py — Chart generator for the EDA / Hypothesis agents.
-
-Generates matplotlib charts, saves to disk as artifacts, and
-returns base64-encoded PNG for the frontend to render inline.
-"""
-
 from __future__ import annotations
 import base64
 import io
@@ -54,10 +47,6 @@ def _save_artifact(fig: plt.Figure, name: str) -> str:
 
 
 def bar_chart(data: dict, title: str, xlabel: str, ylabel: str) -> tuple[str, str]:
-    """
-    data: {label: value, ...}
-    Returns (base64_png, artifact_path)
-    """
     with plt.rc_context(STYLE):
         labels = list(data.keys())
         values = list(data.values())
@@ -82,7 +71,6 @@ def bar_chart(data: dict, title: str, xlabel: str, ylabel: str) -> tuple[str, st
 
 def line_chart(df: pd.DataFrame, x_col: str, y_cols: list[str],
                title: str, xlabel: str, ylabel: str) -> tuple[str, str]:
-    """Multi-line time-series chart."""
     with plt.rc_context(STYLE):
         fig, ax = plt.subplots(figsize=(12, 5))
         for i, col in enumerate(y_cols):
@@ -105,7 +93,6 @@ def line_chart(df: pd.DataFrame, x_col: str, y_cols: list[str],
 def scatter_chart(df: pd.DataFrame, x_col: str, y_col: str,
                   label_col: str | None,
                   title: str, xlabel: str, ylabel: str) -> tuple[str, str]:
-    """Scatter with optional per-point labels and regression line."""
     with plt.rc_context(STYLE):
         fig, ax = plt.subplots(figsize=(9, 6))
         ax.scatter(df[x_col], df[y_col],
@@ -116,7 +103,6 @@ def scatter_chart(df: pd.DataFrame, x_col: str, y_col: str,
                             (row[x_col], row[y_col]),
                             textcoords="offset points", xytext=(4, 4),
                             fontsize=7, color="#c8cad8", alpha=0.8)
-        # Regression line
         x_vals = df[x_col].dropna().values
         y_vals = df[y_col].dropna().values
         if len(x_vals) > 2:
@@ -142,16 +128,6 @@ def run_viz(json_data: str, chart_type: str,
             label_col: str = "", value_col: str = "",
             x_col: str = "", y_col: str = "", y_cols: str = "",
             top_n: str = "") -> dict:
-    """
-    Generate a chart from json_data and return base64 PNG.
-    chart_type: bar | line | scatter
-    For bar: set label_col and value_col.
-    For line: set x_col and y_cols (comma-separated column names).
-    For scatter: set x_col and y_col.
-    top_n: optional, show only top N rows sorted by value_col descending.
-    Returns: {success, chart_base64, chart_title, artifact_path}
-    """
-    # Build config dict from flat params for backwards compat
     config = {
         "title":     title,
         "xlabel":    xlabel,

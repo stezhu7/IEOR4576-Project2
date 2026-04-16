@@ -25,7 +25,6 @@ _client = genai.Client(vertexai=True, project=PROJECT, location=LOCATION)
 MAX_REFINEMENTS = 3
 
 
-# ── Prompt constants ──────────────────────────────────────────────────────────
 
 ROUTE_SYSTEM = """
 You are the routing layer of a US stock market data analyst AI.
@@ -198,14 +197,12 @@ SAFETY_RESPONSE = (
 
 
 def _parse_json(text: str) -> dict:
-    """Strip markdown fences and parse JSON from LLM output."""
     text = re.sub(r"^```(?:json)?", "", text.strip(), flags=re.I).strip()
     text = re.sub(r"```$", "", text).strip()
     return json.loads(text)
 
 
 def _gemini_call(system: str, user: str, temperature: float = 0.0) -> str:
-    """Single-turn Gemini call via google.genai — no tools."""
     response = _client.models.generate_content(
         model=MODEL,
         contents=user,
@@ -276,10 +273,6 @@ def _agentic_loop(
     tools: list[types.Tool],
     max_turns: int = 6,
 ) -> str:
-    """
-    Multi-turn agentic loop using google.genai exclusively.
-    Executes tool calls until the model returns a plain text response.
-    """
     history: list[types.Content] = [
         types.Content(role="user", parts=[types.Part(text=user_input)])
     ]
@@ -376,7 +369,6 @@ def _agentic_loop(
 
 
 def classify_intent(user_text: str) -> RouteDecision:
-    """Semantic intent classification — single call, no tools."""
     raw = _gemini_call(ROUTE_SYSTEM, user_text, temperature=0.0)
     try:
         return RouteDecision(**_parse_json(raw))
@@ -604,13 +596,6 @@ def run_hypothesis(eda: EDAFindings) -> HypothesisReport | None:
 
 
 def run_pipeline(user_text: str) -> ChatResponse:
-    """
-    Full orchestrator pipeline:
-      0. Semantic intent classification  (google.genai, no tools)
-      1. Collect  — SQL + optional API   (google.genai agentic loop)
-      2. EDA      — stats + viz          (google.genai agentic loop, refinement loop)
-      3. Hypothesize — grounded narrative (google.genai, no tools)
-    """
 
     log.info("run_pipeline: user_text=%r", user_text)
     try:
