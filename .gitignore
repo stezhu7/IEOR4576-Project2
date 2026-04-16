@@ -22,7 +22,6 @@ uv.lock
 .env
 .env.*
 
-
 # Generated artifacts (charts saved at runtime)
 artifacts/
 

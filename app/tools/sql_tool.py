@@ -24,7 +24,7 @@ PROJECT  = os.environ.get("GOOGLE_CLOUD_PROJECT")
 LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
 
 _client = genai.Client(vertexai=True, project=PROJECT, location=LOCATION)
-MODEL   = "gemini-2.0-flash"
+MODEL   = "gemini-2.0-flash-001"
 
 SCHEMA_CONTEXT = """
 DuckDB database: market.duckdb
